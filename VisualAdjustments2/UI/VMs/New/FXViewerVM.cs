@@ -23,7 +23,6 @@ namespace VisualAdjustments2.UI
         public IReactiveProperty<UnitReference> UnitDescriptor;
         public FXViewerVM(UnitEntityData data)
         {
-            base.AddDisposable(this);
             var allBuffs = new ReactiveCollection<BuffButtonVM>();
             foreach (var buff in ResourceLoader.AllFXs)
             {

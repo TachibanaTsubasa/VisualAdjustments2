@@ -19,7 +19,6 @@ namespace VisualAdjustments2.UI
     {
         public EquipmentVM()
         {
-            base.AddDisposable(this);
             base.AddDisposable(m_weaponOverride = new WeaponOverrideVM());
             base.AddDisposable(m_classOutfitSelectorVM = new ClassOutfitSelectorVM());
         }

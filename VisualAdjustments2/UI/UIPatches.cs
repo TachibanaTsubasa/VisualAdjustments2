@@ -1519,12 +1519,60 @@ namespace VisualAdjustments2
                 var owlbutt = ApplyButtonGameObject.Find("Button").GetComponent<OwlcatButton>();
                 owlbutt.OnLeftClick.AddListener(() =>
                 {
-                    var doll = EEPickerPCView.ViewModel.UnitDescriptor.Value.Value.Get<UnitPartDollData>();
-                    var settings = EEPickerPCView.ViewModel.UnitDescriptor.Value.Value.GetSettings();
-                    foreach (var action in EEPickerPCView.ViewModel?.applyActions)
+                    var unit = EEPickerPCView.ViewModel.UnitDescriptor.Value.Value;
+                    var settings = unit.GetSettings();
+                    var actions = EEPickerPCView.ViewModel?.applyActions.Values.ToList() ?? new List<EEApplyAction>();
+                    Main.DebugLog($"EEPicker applying {actions.Count} pending action(s)");
+                    foreach (var action in actions)
                     {
-                        action.Value.Apply(EEPickerPCView.ViewModel.UnitDescriptor.Value.Value, settings);
+                        action.Apply(unit, settings);
                     }
+
+                    EEPickerPCView.ViewModel?.applyActions.Clear();
+                    unit.View.UpdateClassEquipment();
+                    Game.Instance.UI.Common.DollRoom.Unit.View.UpdateClassEquipment();
+                    EeInfraStructure.ApplySettings(settings, unit.View?.CharacterAvatar);
+                    EeInfraStructure.ApplySettings(settings, Game.Instance.UI.Common.DollRoom.m_Avatar);
+                    var removals = settings.EeSettings.EEs?
+                        .Where(a => a.actionType == EE_Applier.ActionType.Remove)
+                        .ToList() ?? new List<EE_Applier>();
+                    var clearedCharacterSerializedRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualSerializedDollRampIndices(
+                        unit.View?.CharacterAvatar,
+                        settings,
+                        removals,
+                        "EEPicker apply",
+                        unit.CharacterName);
+                    var clearedDollSerializedRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualSerializedDollRampIndices(
+                        Game.Instance.UI.Common.DollRoom.m_Avatar,
+                        settings,
+                        removals,
+                        "EEPicker apply doll",
+                        unit.CharacterName);
+                    Character_ApplyAdditionalVisualSettings_Patch.LogVisualRenderState(
+                        unit.View?.CharacterAvatar,
+                        unit,
+                        "EEPicker apply direct scene",
+                        "before update");
+                    Character_ApplyAdditionalVisualSettings_Patch.LogVisualRenderState(
+                        Game.Instance.UI.Common.DollRoom.m_Avatar,
+                        unit,
+                        "EEPicker apply direct doll",
+                        "before update");
+                    unit.View.CharacterAvatar.UpdateCharacter();
+                    Game.Instance.UI.Common.DollRoom.m_Avatar.UpdateCharacter();
+                    Character_ApplyAdditionalVisualSettings_Patch.LogVisualRenderState(
+                        unit.View?.CharacterAvatar,
+                        unit,
+                        "EEPicker apply direct scene",
+                        "after update");
+                    Character_ApplyAdditionalVisualSettings_Patch.LogVisualRenderState(
+                        Game.Instance.UI.Common.DollRoom.m_Avatar,
+                        unit,
+                        "EEPicker apply direct doll",
+                        "after update");
+                    if (clearedCharacterSerializedRamps > 0 || clearedDollSerializedRamps > 0)
+                        Main.DebugLog($"EEPicker apply cleared serialized doll ramp fields: {clearedCharacterSerializedRamps + clearedDollSerializedRamps}");
+                    Main.DebugLog($"EEPicker applied. Saved EE action count: {settings.EeSettings.EEs.Count}");
                 });
                 EEPickerPCView.m_ApplyButton = owlbutt;
             }

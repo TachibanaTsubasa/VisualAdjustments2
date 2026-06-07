@@ -183,15 +183,15 @@ namespace VisualAdjustments2.Infrastructure
 
         private void RemoveEE(Character character)
         {
-            var loadedEE = this.Load();
-            if (character.EquipmentEntities.Any(b => b.name == loadedEE.name))
-                character.EquipmentEntities.Remove(loadedEE);
+            EeInfraStructure.RemoveEquipmentEntity(character, this.GUID, this.InternalName);
         }
 
         private void AddEE(Character character)
         {
             var loadedEE = this.Load();
-            if (!character.EquipmentEntities.Contains(loadedEE)) character.EquipmentEntities.Add(loadedEE);
+            if (loadedEE == null) return;
+            if (!character.EquipmentEntities.Any(a => a.name == loadedEE.name))
+                character.AddEquipmentEntity(loadedEE);
             Primary?.Apply(loadedEE, character);
             Secondary?.Apply(loadedEE, character);
         }
@@ -204,6 +204,7 @@ namespace VisualAdjustments2.Infrastructure
 
         public ActionType actionType;
         public string GUID;
+        public string InternalName;
         public ColorInfo Primary; // = new ColorInfo(true);
         public ColorInfo Secondary; // = new ColorInfo(false);
 

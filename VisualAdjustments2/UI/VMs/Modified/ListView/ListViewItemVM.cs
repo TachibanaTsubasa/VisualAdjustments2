@@ -26,7 +26,6 @@ namespace VisualAdjustments2.UI
 			this.InternalName = ee.Name_Internal;
 			this.AddOrRemove = addorremove;
 			this.action = OnSelectAction;
-			base.AddDisposable(this);
 		}
 		public ListViewItemVM(ListViewItemVM ToClone, bool addorremove, Action<ListViewItemVM> OnSelectAction, bool hasRadioButton) : base(false)
 		{
@@ -36,7 +35,6 @@ namespace VisualAdjustments2.UI
 			this.InternalName = ToClone.InternalName;
 			this.AddOrRemove = addorremove;
 			this.action = OnSelectAction;
-			base.AddDisposable(this);
 		}
 		public ListViewItemVM(string name, bool addorremove, Action<ListViewItemVM> OnSelectAction, bool hasRadioButton) : base(false)
 		{
@@ -46,7 +44,6 @@ namespace VisualAdjustments2.UI
 			this.InternalName = name;
 			this.AddOrRemove = addorremove;
 			this.action = OnSelectAction;
-			base.AddDisposable(this);
 		}
 		public ListViewItemVM(string name,string guid, bool addorremove, Action<ListViewItemVM> OnSelectAction, bool hasRadioButton) : base(false)
 		{
@@ -56,7 +53,6 @@ namespace VisualAdjustments2.UI
 			this.InternalName = name;
 			this.AddOrRemove = addorremove;
 			this.action = OnSelectAction;
-			base.AddDisposable(this);
 		}
 		public ListViewItemVM(string name,string guid, bool addorremove, Action<ListViewItemVM> OnSelectAction) : base(false)
 		{
@@ -66,7 +62,6 @@ namespace VisualAdjustments2.UI
 			this.InternalName = name;
 			this.AddOrRemove = addorremove;
 			this.action = OnSelectAction;
-			base.AddDisposable(this);
 		}
 		public bool HasText(string searchRequest)
 		{

@@ -35,11 +35,86 @@ namespace VisualAdjustments2.UI
     {
         public Dictionary<string, EEApplyAction> applyActions = new Dictionary<string, EEApplyAction>();
 
+        private static IEnumerable<EquipmentEntity> GetCurrentEquipmentEntities(UnitEntityData unit)
+        {
+            var character = unit?.View?.CharacterAvatar;
+            if (character == null) yield break;
+
+            foreach (var ee in character.EquipmentEntities ?? Enumerable.Empty<EquipmentEntity>())
+                yield return ee;
+
+            foreach (var ee in character.AdditionalEquipmentEntities ?? Enumerable.Empty<EquipmentEntity>())
+                yield return ee;
+        }
+
+        private static void ReapplySavedEeSettings(UnitEntityData unit)
+        {
+            var settings = unit?.GetSettings();
+            if (settings == null) return;
+
+            var removals = settings.EeSettings.EEs?
+                .Where(a => a.actionType == EE_Applier.ActionType.Remove)
+                .ToList() ?? new List<EE_Applier>();
+
+            var characterAvatar = unit.View?.CharacterAvatar;
+            if (characterAvatar != null)
+            {
+                var changed = EeInfraStructure.ApplySettings(settings, characterAvatar);
+                var clearedRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualRampIndices(
+                    characterAvatar,
+                    removals,
+                    "EEPicker reset",
+                    unit.CharacterName);
+                var clearedDollRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualDollDataRampIndices(
+                    characterAvatar,
+                    unit,
+                    removals,
+                    "EEPicker reset",
+                    unit.CharacterName);
+                var clearedSerializedDollRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualSerializedDollRampIndices(
+                    characterAvatar,
+                    settings,
+                    removals,
+                    "EEPicker reset",
+                    unit.CharacterName);
+                if (changed > 0 || clearedRamps > 0 || clearedDollRamps > 0 || clearedSerializedDollRamps > 0)
+                    Character_ApplyAdditionalVisualSettings_Patch.ForceVisualRebuildAfterRemovals(characterAvatar, "EEPicker reset", unit.CharacterName);
+            }
+
+            var dollRoomAvatar = Game.Instance?.UI?.Common?.DollRoom?.m_Avatar;
+            if (dollRoomAvatar != null)
+            {
+                var changed = EeInfraStructure.ApplySettings(settings, dollRoomAvatar);
+                var clearedRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualRampIndices(
+                    dollRoomAvatar,
+                    removals,
+                    "EEPicker reset doll",
+                    unit.CharacterName);
+                var clearedDollRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualDollDataRampIndices(
+                    dollRoomAvatar,
+                    unit,
+                    removals,
+                    "EEPicker reset doll",
+                    unit.CharacterName);
+                var clearedSerializedDollRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualSerializedDollRampIndices(
+                    dollRoomAvatar,
+                    settings,
+                    removals,
+                    "EEPicker reset doll",
+                    unit.CharacterName);
+                if (changed > 0 || clearedRamps > 0 || clearedDollRamps > 0 || clearedSerializedDollRamps > 0)
+                    Character_ApplyAdditionalVisualSettings_Patch.ForceVisualRebuildAfterRemovals(dollRoomAvatar, "EEPicker reset doll", unit.CharacterName);
+            }
+
+            Main.DebugLog($"EEPicker reset reapplied saved EE action count: {settings.EeSettings.EEs.Count}");
+        }
+
         public void ResetChanges()
         {
             this.applyActions.Clear();
+            ReapplySavedEeSettings(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value);
             var CurrentReactive = new ReactiveCollection<ListViewItemVM>();
-            foreach (var ee in Game.Instance.SelectionCharacter.SelectedUnit.Value.Value.View.CharacterAvatar.EquipmentEntities)
+            foreach (var ee in GetCurrentEquipmentEntities(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value))
             {
                 //Main.Logger.Log(ee.name);
                 var inf = ee.ToEEInfo();
@@ -57,14 +132,13 @@ namespace VisualAdjustments2.UI
         public ReactiveProperty<ListViewVM> CurrentEEs = new ReactiveProperty<ListViewVM>();
         public EEPickerVM(UnitEntityData data)
         {
-            base.AddDisposable(this);
             ReactiveCollection<ListViewItemVM> reactive = new ReactiveCollection<ListViewItemVM>();
             foreach (var kv in ResourceLoader.AllEEs)
             {
                 reactive.Add(new ListViewItemVM(kv, true, AddListItem,true));
             }
             var CurrentReactive = new ReactiveCollection<ListViewItemVM>();
-            foreach (var ee in Game.Instance.SelectionCharacter.SelectedUnit.Value.Value.View.CharacterAvatar.EquipmentEntities)
+            foreach (var ee in GetCurrentEquipmentEntities(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value))
             {
                 //Main.Logger.Log(ee.name);
                 var inf = ee.ToEEInfo();
@@ -88,7 +162,7 @@ namespace VisualAdjustments2.UI
         {
             this.applyActions.Clear();
             var CurrentReactive = new ReactiveCollection<ListViewItemVM>();
-            foreach (var ee in Game.Instance.SelectionCharacter.SelectedUnit.Value.Value.View.CharacterAvatar.EquipmentEntities)
+            foreach (var ee in GetCurrentEquipmentEntities(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value))
             {
                 //Main.Logger.Log(ee.name);
                 var inf = ee.ToEEInfo();
@@ -108,12 +182,30 @@ namespace VisualAdjustments2.UI
                 {
 
                     this.CurrentEEs?.Value?.EntitiesCollection?.Remove(item);
-                    if(Game.Instance.UI.Common.DollRoom.m_Avatar.EquipmentEntities.Any(a => a.name == item.InternalName)) Game.Instance.UI.Common.DollRoom.m_Avatar.RemoveEquipmentEntity(ResourcesLibrary.TryGetResource<EquipmentEntity>(item.Guid));
-                    if(this.applyActions.ContainsKey(item.Guid))
+                    var dollRoomAvatar = Game.Instance.UI.Common.DollRoom.m_Avatar;
+                    var changed = EeInfraStructure.RemoveEquipmentEntity(dollRoomAvatar, item.Guid, item.InternalName, true);
+                    var pendingRemoval = new EE_Applier(item.Guid, EE_Applier.ActionType.Remove)
                     {
-                        this.applyActions.Remove(item.Guid);
-                    }
-                    else if (!this.applyActions.ContainsKey(item.Guid)) this.applyActions.Add(item.Guid, new RemoveEE(item.Guid));
+                        InternalName = item.InternalName
+                    };
+                    var clearedRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualRampIndices(
+                        dollRoomAvatar,
+                        new List<EE_Applier> { pendingRemoval },
+                        "EEPicker preview remove",
+                        Game.Instance.UI.Common.DollRoom.Unit?.CharacterName);
+                    var clearedDollRamps = Character_ApplyAdditionalVisualSettings_Patch.ClearAdditionalVisualDollDataRampIndices(
+                        dollRoomAvatar,
+                        Game.Instance.UI.Common.DollRoom.Unit,
+                        new List<EE_Applier> { pendingRemoval },
+                        "EEPicker preview remove",
+                        Game.Instance.UI.Common.DollRoom.Unit?.CharacterName);
+                    if (changed || clearedRamps > 0 || clearedDollRamps > 0)
+                        Character_ApplyAdditionalVisualSettings_Patch.ForceVisualRebuildAfterRemovals(
+                            dollRoomAvatar,
+                            "EEPicker preview remove",
+                            Game.Instance.UI.Common.DollRoom.Unit?.CharacterName);
+                    this.applyActions[item.Guid] = new RemoveEE(item.Guid, item.InternalName);
+                    Main.DebugLog($"EEPicker queued remove: {item.InternalName} ({item.Guid})");
                 }
             }
             catch (Exception e)
@@ -130,7 +222,8 @@ namespace VisualAdjustments2.UI
                // Main.Logger.Log(ResourcesLibrary.TryGetResource<EquipmentEntity>(item.Guid).ToString());
                 if(!Game.Instance.UI.Common.DollRoom.m_Avatar.EquipmentEntities.Any(a => a.name == item.InternalName))
                 Game.Instance.UI.Common.DollRoom.m_Avatar.AddEquipmentEntity(ResourcesLibrary.TryGetResource<EquipmentEntity>(item.Guid));
-                if (!this.applyActions.ContainsKey(item.Guid)) this.applyActions.Add(item.Guid, new AddEE(item.Guid));
+                this.applyActions[item.Guid] = new AddEE(item.Guid, item.InternalName);
+                Main.DebugLog($"EEPicker queued add: {item.InternalName} ({item.Guid})");
             }
             catch (Exception e)
             {

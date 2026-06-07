@@ -21,7 +21,6 @@ namespace VisualAdjustments2.UI
     {
         public PickerVMTst(LevelUpController levelUpController) : base(levelUpController)
         {
-            base.AddDisposable(this);
         }
 
         public override void CollectCharacterPortraits(LevelUpController levelUpController)

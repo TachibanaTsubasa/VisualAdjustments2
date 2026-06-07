@@ -56,7 +56,8 @@ namespace VisualAdjustments2.Infrastructure
                 else if (action is ContextActionSpawnAreaEffect spawnArea)
                 {
                     //  LogVerbose(level, $"recursing into spawnArea");
-                    if (spawnArea.AreaEffect?.TryGetComponent<AbilityAreaEffectBuff>(out var areaBuff) == true &&
+                    AbilityAreaEffectBuff areaBuff = null;
+                    if (spawnArea.AreaEffect?.TryGetComponent<AbilityAreaEffectBuff>(out areaBuff) == true &&
                         areaBuff.Buff?.IsBeneficial() == true)
                     {
                         //  LogVerbose(level, $"FOUND: areaBuff {areaBuff.name}");

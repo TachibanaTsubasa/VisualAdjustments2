@@ -32,7 +32,6 @@ namespace VisualAdjustments2.UI
         public override void BindViewImplementation()
         {
             this.Show();
-            base.AddDisposable(base.ViewModel);
         }
 
         public override void DestroyViewImplementation()

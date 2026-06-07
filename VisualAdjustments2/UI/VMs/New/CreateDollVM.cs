@@ -18,8 +18,6 @@ namespace VisualAdjustments2.UI
         public string charname;
         public CreateDollVM()
         {
-            base.AddDisposable(this);
-            
             charname = Game.Instance.SelectionCharacter.SelectedUnit.Value.Value.CharacterName;
             ToDisplay.Value = $"{charname} has no doll, create?";
 

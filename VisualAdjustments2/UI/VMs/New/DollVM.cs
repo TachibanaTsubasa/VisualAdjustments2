@@ -17,14 +17,56 @@ namespace VisualAdjustments2.UI
 {
     public class DollVM : BaseDisposable, IDisposable, IViewModel, IBaseDisposable
     {
+        private static DollVM s_Active;
+
         public DollVM()
         {
-            base.AddDisposable(this);
+            s_Active = this;
             base.AddDisposable(Game.Instance.SelectionCharacter.SelectedUnit.Subscribe((UnitReference _) =>
             {
                 OnCharacterChanged();
             }));
             OnCharacterChanged(true);
+        }
+
+        public static void RefreshCurrentDoll(UnitEntityData unit, string source)
+        {
+            try
+            {
+                var active = s_Active;
+                if (active == null || active.IsDisposed || unit == null)
+                {
+                    Main.DebugLog($"Skipped VA2 doll VM refresh after {source}: active={active != null}, disposed={active?.IsDisposed}, unit={unit?.CharacterName}");
+                    return;
+                }
+                if (Game.Instance?.SelectionCharacter?.SelectedUnit?.Value.Value != unit)
+                {
+                    Main.DebugLog($"Skipped VA2 doll VM refresh after {source}: selected={Game.Instance?.SelectionCharacter?.SelectedUnit?.Value.Value?.CharacterName}, target={unit.CharacterName}");
+                    return;
+                }
+
+                active.OnCharacterChanged(true);
+                Main.DebugLog($"Refreshed VA2 doll VM after {source}: {unit.CharacterName}");
+            }
+            catch (Exception e)
+            {
+                Main.Logger.Error(e.ToString());
+            }
+        }
+
+        public static bool HasActiveFor(UnitEntityData unit)
+        {
+            try
+            {
+                return s_Active != null &&
+                       !s_Active.IsDisposed &&
+                       unit != null &&
+                       Game.Instance?.SelectionCharacter?.SelectedUnit?.Value.Value == unit;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public void AddUnitPart()
@@ -74,6 +116,7 @@ namespace VisualAdjustments2.UI
                     (forcechange || this.createDollVM?.Value?.charname != unit.CharacterName))
                 {
                     var doll = unit.GetDollState();
+                    Main.DebugLog($"VA2 DollVM binding doll: unit={unit.CharacterName}, force={forcechange}, doll={Character_ApplyAdditionalVisualSettings_Patch.DescribeSerializedDoll(unit.GetSettings()?.doll)}");
                     if (doll.Race != null)
                     {
                         doll.CreateTattos(default);
@@ -84,8 +127,10 @@ namespace VisualAdjustments2.UI
                         //lvlcontroller.Doll = doll;
                         CharGenAppearancePhaseVMModified.pcview.gameObject.SetActive(true);
                         CharGenAppearancePhaseVMModified.pcview.transform.parent.gameObject.SetActive(true);
-                        base.AddDisposable(this.m_DollAppearanceVM.Value =
-                            new CharGenAppearancePhaseVMModified( /*lvlcontroller,*/ doll, false));
+                        this.m_DollAppearanceVM.Value?.Dispose();
+                        var appearanceVM = new CharGenAppearancePhaseVMModified( /*lvlcontroller,*/ doll, false);
+                        base.AddDisposable(appearanceVM);
+                        this.m_DollAppearanceVM.Value = appearanceVM;
                         ///Fails after here somewhere
                         //Main.Logger.Log("AfterBind");
                     }
@@ -126,8 +171,9 @@ namespace VisualAdjustments2.UI
 
         public override void DisposeImplementation()
         {
+            if (s_Active == this)
+                s_Active = null;
             // Main.Logger.Log("DisposedDOllVM");
-            this.Dispose();
         }
 
         public ReactiveProperty<CreateDollVM> createDollVM = new ReactiveProperty<CreateDollVM>();

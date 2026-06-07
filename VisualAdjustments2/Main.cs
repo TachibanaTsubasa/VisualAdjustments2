@@ -51,6 +51,7 @@ namespace VisualAdjustments2
             {
                 ModEntry = modEntry;
                 Logger = modEntry.Logger;
+                Logger.Log("VA2 build 2026-06-07-1510-prefilter-dollroom");
                 var harmony = new Harmony(modEntry.Info.Id);
                 harmony.PatchAll(Assembly.GetExecutingAssembly());
 #if DEBUG
@@ -67,6 +68,12 @@ namespace VisualAdjustments2
                 throw e;
             }
             return true;
+        }
+
+        [Conditional("DEBUG")]
+        public static void DebugLog(string message)
+        {
+            Logger?.Log(message);
         }
 #else
         public static Kingmaker.Modding.OwlcatModification Modification { get; private set; }

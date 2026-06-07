@@ -125,7 +125,9 @@ namespace VisualAdjustments2.UI
                     case VisualWindowType.Equipment:
                         if (this.EquipmentVM.Value == null)
                         {
-                            base.AddDisposable(this.EquipmentVM.Value = new EquipmentVM());
+                            var equipmentVM = new EquipmentVM();
+                            base.AddDisposable(equipmentVM);
+                            this.EquipmentVM.Value = equipmentVM;
                             return;
                         }
 
@@ -133,8 +135,9 @@ namespace VisualAdjustments2.UI
                     case VisualWindowType.FXViewer:
                         if (this.FXViewerVM.Value == null)
                         {
-                            base.AddDisposable(this.FXViewerVM.Value =
-                                new FXViewerVM(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value));
+                            var fxViewerVM = new FXViewerVM(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value);
+                            base.AddDisposable(fxViewerVM);
+                            this.FXViewerVM.Value = fxViewerVM;
                             return;
                         }
 
@@ -142,7 +145,9 @@ namespace VisualAdjustments2.UI
                     case VisualWindowType.Doll:
                         if (this.DollVM.Value == null)
                         {
-                            base.AddDisposable(this.DollVM.Value = new DollVM());
+                            var dollVM = new DollVM();
+                            base.AddDisposable(dollVM);
+                            this.DollVM.Value = dollVM;
                             return;
                         }
 
@@ -150,8 +155,9 @@ namespace VisualAdjustments2.UI
                     case VisualWindowType.EEPicker:
                         if (this.EEPickerVM.Value == null)
                         {
-                            base.AddDisposable(this.EEPickerVM.Value =
-                                new EEPickerVM(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value));
+                            var eePickerVM = new EEPickerVM(Game.Instance.SelectionCharacter.SelectedUnit.Value.Value);
+                            base.AddDisposable(eePickerVM);
+                            this.EEPickerVM.Value = eePickerVM;
                             return;
                         }
 
@@ -159,7 +165,9 @@ namespace VisualAdjustments2.UI
                     case VisualWindowType.Portrait:
                         if (this.PortraitVM.Value == null)
                         {
-                            base.AddDisposable(this.PortraitVM.Value = new PortraitPickerVM());
+                            var portraitVM = new PortraitPickerVM();
+                            base.AddDisposable(portraitVM);
+                            this.PortraitVM.Value = portraitVM;
                             return;
                         }
 
@@ -240,8 +248,9 @@ namespace VisualAdjustments2.UI
 
         public void ShowMenu()
         {
-            base.AddDisposable(this.ServiceWindowsMenuVM.Value =
-                new ServiceWindowsMenuVMModified(new Action<VisualWindowType>(this.OnSelectWindow)));
+            var menuVM = new ServiceWindowsMenuVMModified(new Action<VisualWindowType>(this.OnSelectWindow));
+            base.AddDisposable(menuVM);
+            this.ServiceWindowsMenuVM.Value = menuVM;
         }
 
         public void HideMenu()
