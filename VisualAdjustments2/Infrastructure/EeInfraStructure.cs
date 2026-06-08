@@ -2,6 +2,7 @@
 using Kingmaker.EntitySystem;
 using Kingmaker.EntitySystem.Entities;
 using Kingmaker;
+using Kingmaker.EntitySystem.Persistence;
 using Kingmaker.UnitLogic;
 using Kingmaker.UnitLogic.Parts;
 using Kingmaker.View;
@@ -321,6 +322,8 @@ namespace VisualAdjustments2.Infrastructure
     [HarmonyLib.HarmonyPatch(typeof(UnitEntityData), nameof(UnitEntityData.OnViewDidAttach))]
     public static class UnitEntityData_CreateView_Patch
     {
+        private static readonly HashSet<string> s_PendingApplies = new HashSet<string>();
+
         public static void Postfix(UnitEntityData __instance)
         {
             try
@@ -328,17 +331,56 @@ namespace VisualAdjustments2.Infrastructure
                 if (__instance.View?.CharacterAvatar != null && __instance.IsPlayerFaction &&
                     Kingmaker.Game.Instance.Player.AllCharacters.Contains(__instance))
                 {
-                    var settings = __instance.GetSettings();
-                    var hadRemovals = settings?.EeSettings?.EEs?.Any(a => a.actionType == EE_Applier.ActionType.Remove) == true;
-                    var changed = EeInfraStructure.ApplySettings(settings, __instance.View.CharacterAvatar);
-                    if (changed > 0)
-                        __instance.View.CharacterAvatar.UpdateCharacter();
+                    QueueApply(__instance, nameof(UnitEntityData.OnViewDidAttach));
                 }
             }
             catch (Exception e)
             {
                 Main.Logger.Error(e.ToString());
             }
+        }
+
+        private static void QueueApply(UnitEntityData unit, string source)
+        {
+            var settings = unit?.GetSettings();
+            if (settings?.EeSettings?.EEs?.Count > 0 != true) return;
+
+            var key = unit.UniqueId ?? unit.GetHashCode().ToString();
+            if (!s_PendingApplies.Add(key)) return;
+
+            LoaderGameObject.RunWhenReady(
+                LoadingProcess_Update_VA2_Patch.WasRecentlyLoading,
+                () =>
+                {
+                    s_PendingApplies.Remove(key);
+                    var character = unit.View?.CharacterAvatar;
+                    if (character == null) return;
+
+                    var changed = EeInfraStructure.ApplySettings(unit.GetSettings(), character);
+                    if (changed > 0)
+                        character.UpdateCharacter();
+
+                    Main.DebugLog($"Applied deferred EE settings after {source}: {unit.CharacterName}, changed={changed}");
+                });
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(LoadingProcess), nameof(LoadingProcess.Update))]
+    public static class LoadingProcess_Update_VA2_Patch
+    {
+        private static int s_LastLoadingFrame = -10000;
+        private static float s_LastLoadingTime = -10000f;
+
+        public static void Prefix()
+        {
+            s_LastLoadingFrame = Time.frameCount;
+            s_LastLoadingTime = Time.realtimeSinceStartup;
+        }
+
+        public static bool WasRecentlyLoading()
+        {
+            return Time.frameCount - s_LastLoadingFrame <= 2 ||
+                   Time.realtimeSinceStartup - s_LastLoadingTime < 0.25f;
         }
     }
 
@@ -348,17 +390,14 @@ namespace VisualAdjustments2.Infrastructure
         private static bool s_ApplyingVa2EeSettings;
         private static int s_DiagnosticsLogCount;
         private static int s_RenderDiagnosticsLogCount;
+        private static readonly HashSet<string> s_PendingSavedApplies = new HashSet<string>();
 
         public class FilterState
         {
+            public Character Character;
             public Kingmaker.Blueprints.Classes.BlueprintClassAdditionalVisualSettings Settings;
-            public KingmakerEquipmentEntityReference[] Common;
-            public KingmakerEquipmentEntityReference[] InGame;
-            public KingmakerEquipmentEntityReference[] DollRoom;
-            public Kingmaker.ResourceLinks.PrefabLink[] CommonFXs;
-            public Kingmaker.ResourceLinks.PrefabLink[] InGameFXs;
-            public Kingmaker.ResourceLinks.PrefabLink[] DollRoomFXs;
             public Kingmaker.Blueprints.Classes.BlueprintClassAdditionalVisualSettings.ColorRamp[] ColorRamps;
+            public bool ReplacedCharacterSettings;
             public int Removed;
             public int RemovedFXs;
             public int RemovedColorRamps;
@@ -426,6 +465,31 @@ namespace VisualAdjustments2.Infrastructure
                 ForceVisualRebuildAfterRemovals(character, source, unit.CharacterName);
             EeInfraStructure.DumpRelevantEquipmentState(character, settings, source);
             Main.DebugLog($"Applied saved EE removals after {source}: {unit.CharacterName}, count: {settings.EeSettings.EEs.Count}");
+        }
+
+        internal static void ApplySavedSettingsWhenSafe(Character character, UnitEntityData unit, string source)
+        {
+            if (character == null || unit?.IsPlayerFaction != true) return;
+
+            var key = $"{unit.UniqueId ?? unit.GetHashCode().ToString()}:{ObjectHash(character)}:{source}";
+            if (!s_PendingSavedApplies.Add(key)) return;
+
+            LoaderGameObject.RunWhenReady(
+                LoadingProcess_Update_VA2_Patch.WasRecentlyLoading,
+                () =>
+                {
+                    s_PendingSavedApplies.Remove(key);
+                    try
+                    {
+                        ApplySavedSettings(character, unit, source + " deferred");
+                    }
+                    finally
+                    {
+                        ClearGuard();
+                    }
+                });
+
+            Main.DebugLog($"Queued deferred saved EE removal apply after {source}: {unit.CharacterName}");
         }
 
         private static bool ShouldLogDiagnostics()
@@ -1239,69 +1303,39 @@ namespace VisualAdjustments2.Infrastructure
                 var additionalSettings = __instance?.m_AdditionalVisualSettings;
                 if (additionalSettings == null) return;
 
+                var removedColorRamps = GetRemovedAdditionalVisualColorRamps(additionalSettings, __instance, removals);
+                var filteredSettings = BuildFilteredAdditionalVisualSettings(
+                    additionalSettings,
+                    __instance,
+                    removals,
+                    removedColorRamps,
+                    nameof(Character.ApplyAdditionalVisualSettings),
+                    unit.CharacterName,
+                    out var removedProviders,
+                    out var removedFx,
+                    out var originalRampCount);
+                if (filteredSettings == null) return;
+
                 __state = new FilterState
                 {
+                    Character = __instance,
                     Settings = additionalSettings,
-                    Common = additionalSettings.CommonSettings?.m_EquipmentEntities,
-                    InGame = additionalSettings.InGameSettings?.m_EquipmentEntities,
-                    DollRoom = additionalSettings.DollRoomSettings?.m_EquipmentEntities,
-                    CommonFXs = additionalSettings.CommonSettings?.FXs,
-                    InGameFXs = additionalSettings.InGameSettings?.FXs,
-                    DollRoomFXs = additionalSettings.DollRoomSettings?.FXs,
-                    ColorRamps = additionalSettings.ColorRamps
+                    ColorRamps = removedColorRamps,
+                    ReplacedCharacterSettings = true,
+                    Removed = removedProviders,
+                    RemovedFXs = removedFx,
+                    RemovedColorRamps = removedColorRamps?.Length ?? 0
                 };
 
-                __state.Removed += FilterAdditionalVisualSettings(additionalSettings.CommonSettings, __instance, removals, out var commonFx);
-                __state.RemovedFXs += commonFx;
-                __state.Removed += FilterAdditionalVisualSettings(additionalSettings.InGameSettings, __instance, removals, out var inGameFx);
-                __state.RemovedFXs += inGameFx;
-                __state.Removed += FilterAdditionalVisualSettings(additionalSettings.DollRoomSettings, __instance, removals, out var dollRoomFx);
-                __state.RemovedFXs += dollRoomFx;
-
-                if (__state.Removed > 0 && additionalSettings.ColorRamps?.Length > 0)
-                {
-                    __state.RemovedColorRamps = additionalSettings.ColorRamps.Length;
-                    additionalSettings.ColorRamps = Array.Empty<Kingmaker.Blueprints.Classes.BlueprintClassAdditionalVisualSettings.ColorRamp>();
-                    Main.DebugLog($"Filtered {__state.RemovedColorRamps} additional visual color ramp(s) paired with removed EE provider(s)");
-                }
+                __instance.m_AdditionalVisualSettings = filteredSettings;
 
                 if (__state.Removed > 0)
-                    Main.DebugLog($"Filtered {__state.Removed} additional visual EE provider(s), {__state.RemovedFXs} FX provider(s), and {__state.RemovedColorRamps} color ramp(s) before ApplyAdditionalVisualSettings: {unit.CharacterName}");
+                    Main.DebugLog($"Using cloned filtered additional visual settings before ApplyAdditionalVisualSettings: {unit.CharacterName}, providers={__state.Removed}, fx={__state.RemovedFXs}, colorRamps={originalRampCount}->{filteredSettings.ColorRamps?.Length ?? 0}");
             }
             catch (Exception e)
             {
                 Main.Logger.Error(e.ToString());
             }
-        }
-
-        private static int FilterAdditionalVisualSettings(
-            Kingmaker.Blueprints.Classes.BlueprintClassAdditionalVisualSettings.SettingsData settingsData,
-            Character character,
-            List<EE_Applier> removals,
-            out int removedFxCount)
-        {
-            removedFxCount = 0;
-            var original = settingsData?.m_EquipmentEntities;
-            if (original == null || original.Length == 0) return 0;
-
-            var filtered = original
-                .Where(a => !MatchesRemovedEquipmentEntity(a, character, removals))
-                .ToArray();
-
-            if (filtered.Length == original.Length) return 0;
-
-            foreach (var removed in original.Except(filtered))
-                Main.DebugLog($"Filtered additional visual provider loading: {DescribeKee(removed, character)}");
-
-            removedFxCount = settingsData.FXs?.Length ?? 0;
-            if (removedFxCount > 0)
-            {
-                settingsData.FXs = Array.Empty<Kingmaker.ResourceLinks.PrefabLink>();
-                Main.DebugLog($"Filtered {removedFxCount} additional visual FX provider(s) paired with removed EE provider(s)");
-            }
-
-            settingsData.m_EquipmentEntities = filtered;
-            return original.Length - filtered.Length;
         }
 
         private static bool SettingsContainRemovedEquipment(
@@ -1373,31 +1407,25 @@ namespace VisualAdjustments2.Infrastructure
         {
             if (state?.Settings == null) return;
 
-            if (state.Settings.CommonSettings != null)
-            {
-                state.Settings.CommonSettings.m_EquipmentEntities = state.Common;
-                state.Settings.CommonSettings.FXs = state.CommonFXs;
-            }
-            if (state.Settings.InGameSettings != null)
-            {
-                state.Settings.InGameSettings.m_EquipmentEntities = state.InGame;
-                state.Settings.InGameSettings.FXs = state.InGameFXs;
-            }
-            if (state.Settings.DollRoomSettings != null)
-            {
-                state.Settings.DollRoomSettings.m_EquipmentEntities = state.DollRoom;
-                state.Settings.DollRoomSettings.FXs = state.DollRoomFXs;
-            }
-
-            state.Settings.ColorRamps = state.ColorRamps;
+            if (state.ReplacedCharacterSettings && state.Character != null)
+                state.Character.m_AdditionalVisualSettings = state.Settings;
         }
 
         public static void Postfix(Character __instance, FilterState __state)
         {
             var wasApplyingVa2EeSettings = s_ApplyingVa2EeSettings;
+            var restoredFilteredSettings = false;
             try
             {
                 var unit = FindUnitForCharacter(__instance);
+                if (!wasApplyingVa2EeSettings && LoadingProcess_Update_VA2_Patch.WasRecentlyLoading())
+                {
+                    RestoreFilteredSettings(__state);
+                    restoredFilteredSettings = true;
+                    ApplySavedSettingsWhenSafe(__instance, unit, nameof(Character.ApplyAdditionalVisualSettings));
+                    return;
+                }
+
                 var clearedFilteredRamps = 0;
                 var clearedFilteredDollRamps = 0;
                 if (__state?.Removed > 0 && __state.ColorRamps?.Length > 0)
@@ -1415,6 +1443,7 @@ namespace VisualAdjustments2.Infrastructure
                 }
 
                 RestoreFilteredSettings(__state);
+                restoredFilteredSettings = true;
                 if (!wasApplyingVa2EeSettings)
                 {
                     ApplySavedSettings(__instance, unit, nameof(Character.ApplyAdditionalVisualSettings));
@@ -1428,7 +1457,8 @@ namespace VisualAdjustments2.Infrastructure
             }
             finally
             {
-                RestoreFilteredSettings(__state);
+                if (!restoredFilteredSettings)
+                    RestoreFilteredSettings(__state);
                 if (!wasApplyingVa2EeSettings)
                     s_ApplyingVa2EeSettings = false;
             }

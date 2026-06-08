@@ -51,7 +51,7 @@ namespace VisualAdjustments2
             {
                 ModEntry = modEntry;
                 Logger = modEntry.Logger;
-                Logger.Log("VA2 build 2026-06-07-1510-prefilter-dollroom");
+                Logger.Log("VA2 build 2026-06-08-2120-defer-ee-apply-cleanup");
                 var harmony = new Harmony(modEntry.Info.Id);
                 harmony.PatchAll(Assembly.GetExecutingAssembly());
 #if DEBUG

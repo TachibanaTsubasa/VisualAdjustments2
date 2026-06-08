@@ -41,6 +41,41 @@ namespace VisualAdjustments2.Infrastructure
         private static bool EnchantsLoaded = false;
 
         public static bool Loaded = false;
+        private static LoaderGameObject s_RuntimeScheduler;
+
+        public static void RunWhenReady(Func<bool> shouldWait, Action action, int settleFrames = 6, float maxDelaySeconds = 5f)
+        {
+            EnsureRuntimeScheduler();
+            s_RuntimeScheduler.StartCoroutine(s_RuntimeScheduler.RunWhenReadyCoroutine(shouldWait, action, settleFrames, maxDelaySeconds));
+        }
+
+        private static void EnsureRuntimeScheduler()
+        {
+            if (s_RuntimeScheduler != null) return;
+
+            var gm = new GameObject("VA2 Runtime Scheduler");
+            DontDestroyOnLoad(gm);
+            s_RuntimeScheduler = gm.AddComponent<LoaderGameObject>();
+        }
+
+        private IEnumerator RunWhenReadyCoroutine(Func<bool> shouldWait, Action action, int settleFrames, float maxDelaySeconds)
+        {
+            var startedAt = Time.realtimeSinceStartup;
+            while (shouldWait?.Invoke() == true && Time.realtimeSinceStartup - startedAt < maxDelaySeconds)
+                yield return null;
+
+            for (var i = 0; i < settleFrames; i++)
+                yield return null;
+
+            try
+            {
+                action?.Invoke();
+            }
+            catch (Exception e)
+            {
+                Main.Logger.Error(e.ToString());
+            }
+        }
 
         public static void CreateLoaderAndLoad()
         {
